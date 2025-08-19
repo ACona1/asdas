@@ -1,0 +1,83 @@
+﻿<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>🎬 Video.js Playlist</title>
+  <!-- Video.js CSS -->
+  <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+  <style>
+    body {background:#111;color:#eee;font-family:Arial;text-align:center;padding:20px;}
+    .category {margin:20px 0;padding:10px;background:#222;border-radius:8px;}
+    .episode {cursor:pointer;margin:5px;padding:8px;background:#333;border-radius:6px;}
+    .episode:hover {background:#555;}
+  </style>
+</head>
+<body>
+
+  <h2>📺 مشغل الحلقات مع الترجمة</h2>
+  <video id="player" class="video-js vjs-big-play-centered" width="640" height="360" controls preload="auto"></video>
+
+  <div id="playlist"></div>
+
+  <!-- Video.js JS -->
+  <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+<script>
+  // إنشاء المشغل
+  const player = videojs("player");
+
+  // تحميل الفيديو + الترجمة
+  async function loadVideo(videoUrl, subUrl){
+    player.src({ src: videoUrl, type: "video/mp4" });
+
+    // مسح أي تراكات قديمة
+    const oldTracks = player.remoteTextTracks();
+    while (oldTracks.length > 0) player.removeRemoteTextTrack(oldTracks[0]);
+
+    // تحميل الترجمة كـ Blob
+    const res = await fetch(subUrl);
+    const txt = await res.text();
+    let finalTxt = txt.startsWith("WEBVTT") ? txt : "WEBVTT\n\n" + txt;
+    const blob = new Blob([finalTxt], { type: "text/vtt" });
+    const trackUrl = URL.createObjectURL(blob);
+
+    player.addRemoteTextTrack({
+      kind: "subtitles",
+      src: trackUrl,
+      srclang: "ar",
+      label: "Arabic",
+      default: true
+    }, false);
+
+    player.play();
+  }
+
+  // تحميل الـ JSON من Dropbox
+  async function loadPlaylist() {
+    const res = await fetch("https://gist.githubusercontent.com/ACona1/c670df837e4ed498d15295d4b650dfd0/raw/playlist.txt");
+    const categories = await res.json();
+
+    const playlistDiv = document.getElementById("playlist");
+    playlistDiv.innerHTML = "";
+
+    for (const [catName, episodes] of Object.entries(categories)) {
+      const catDiv = document.createElement("div");
+      catDiv.className = "category";
+      catDiv.innerHTML = `<h3>${catName}</h3>`;
+
+      episodes.forEach((ep, i) => {
+        const epDiv = document.createElement("div");
+        epDiv.className = "episode";
+        epDiv.textContent = `حلقة ${i+1}`;
+        epDiv.onclick = () => loadVideo(ep.video, ep.sub);
+        catDiv.appendChild(epDiv);
+      });
+
+      playlistDiv.appendChild(catDiv);
+    }
+  }
+
+  loadPlaylist();
+</script>
+
+</body>
+</html>
