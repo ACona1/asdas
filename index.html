@@ -1,57 +1,45 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>🎬 Video.js Playlist</title>
-  <!-- Video.js CSS -->
-  <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+  <title>🎬 مشغل الحلقات</title>
   <style>
-    body {background:#111;color:#eee;font-family:Arial;text-align:center;padding:20px;}
-    .category {margin:20px 0;padding:10px;background:#222;border-radius:8px;}
-    .episode {cursor:pointer;margin:5px;padding:8px;background:#333;border-radius:6px;}
-    .episode:hover {background:#555;}
+    body { background:#111; color:#eee; font-family:Arial; text-align:center; padding:20px; }
+    .category { margin:20px 0; padding:10px; background:#222; border-radius:8px; }
+    .episode { cursor:pointer; margin:5px; padding:8px; background:#333; border-radius:6px; }
+    .episode:hover { background:#555; }
+    video { width: 100%; max-width: 640px; height: auto; border-radius:8px; }
   </style>
 </head>
 <body>
 
   <h2>📺 مشغل الحلقات مع الترجمة</h2>
-  <video id="player" class="video-js vjs-big-play-centered" width="640" height="360" controls preload="auto"></video>
+  <video id="player" controls preload="auto">
+    <track id="subtitle" kind="subtitles" srclang="ar" label="Arabic" default>
+  </video>
 
   <div id="playlist"></div>
 
-  <!-- Video.js JS -->
-  <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
 <script>
-  // إنشاء المشغل
-  const player = videojs("player");
+  const player = document.getElementById("player");
+  const subtitleTrack = document.getElementById("subtitle");
 
-  // تحميل الفيديو + الترجمة
-  async function loadVideo(videoUrl, subUrl){
-    player.src({ src: videoUrl, type: "video/mp4" });
+  async function loadVideo(videoUrl, subUrl) {
+    player.src = videoUrl;
 
-    // مسح أي تراكات قديمة
-    const oldTracks = player.remoteTextTracks();
-    while (oldTracks.length > 0) player.removeRemoteTextTrack(oldTracks[0]);
-
-    // تحميل الترجمة كـ Blob
+    // تحميل الترجمة
     const res = await fetch(subUrl);
-    const txt = await res.text();
-    let finalTxt = txt.startsWith("WEBVTT") ? txt : "WEBVTT\n\n" + txt;
-    const blob = new Blob([finalTxt], { type: "text/vtt" });
+    let txt = await res.text();
+    if (!txt.startsWith("WEBVTT")) txt = "WEBVTT\n\n" + txt;
+
+    const blob = new Blob([txt], { type: "text/vtt" });
     const trackUrl = URL.createObjectURL(blob);
+    subtitleTrack.src = trackUrl;
 
-    player.addRemoteTextTrack({
-      kind: "subtitles",
-      src: trackUrl,
-      srclang: "ar",
-      label: "Arabic",
-      default: true
-    }, false);
-
+    player.load();
     player.play();
   }
 
-  // تحميل الـ JSON من Dropbox
   async function loadPlaylist() {
     const res = await fetch("https://gist.githubusercontent.com/ACona1/c670df837e4ed498d15295d4b650dfd0/raw/playlist.txt");
     const categories = await res.json();
