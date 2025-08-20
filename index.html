@@ -1,71 +1,115 @@
-<!DOCTYPE html>
+﻿<!doctype html>
 <html lang="ar">
 <head>
-  <meta charset="UTF-8">
-  <title>🎬 مشغل الحلقات</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fsh5Flix — المكتبة</title>
+  <link href="https://vjs.zencdn.net/8.20.0/video-js.css" rel="stylesheet" />
   <style>
-    body { background:#111; color:#eee; font-family:Arial; text-align:center; padding:20px; }
-    .category { margin:20px 0; padding:10px; background:#222; border-radius:8px; }
-    .episode { cursor:pointer; margin:5px; padding:8px; background:#333; border-radius:6px; }
-    .episode:hover { background:#555; }
-    video { width: 100%; max-width: 640px; height: auto; border-radius:8px; }
+    :root{--bg:#02141a;--card:#071826;--accent:#e50914;--text:#eaf6ff}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:linear-gradient(180deg,#00121a,#02141a);color:var(--text);font-family:Inter,system-ui,Arial}
+    header{display:flex;align-items:center;justify-content:space-between;padding:18px 28px}
+    .brand{font-weight:900;color:var(--accent);letter-spacing:0.6px}
+
+    main{padding:22px}
+    h1{margin:0 0 14px 0;font-size:20px}
+
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);border-radius:12px;overflow:hidden;cursor:pointer;transform:translateY(14px);opacity:0;animation:cardIn .6s forwards;transition:transform .28s cubic-bezier(.2,.9,.3,1),box-shadow .28s}
+    .card:hover{transform:translateY(-10px) scale(1.04);box-shadow:0 28px 80px rgba(0,0,0,0.6)}
+    .thumb{height:320px;background:#071826;display:flex;align-items:end;padding:12px;position:relative}
+    .thumb img{width:100%;height:100%;object-fit:cover;border-radius:8px;display:block}
+    .overlay-gradient{position:absolute;left:0;right:0;bottom:0;height:42%;background:linear-gradient(0deg,rgba(0,0,0,0.75),transparent);border-radius:0 0 8px 8px}
+    .title{padding:10px 12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+    .meta{padding:0 12px 16px 12px;color:rgba(255,255,255,0.6);font-size:13px}
+
+    @keyframes cardIn{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+    footer{padding:20px;text-align:center;color:rgba(255,255,255,0.35)}
+
+    @media (max-width:900px){.thumb{height:220px}.grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
   </style>
 </head>
 <body>
+  <header>
+    <div class="brand">Fsh5Flix</div>
+    <div style="color:rgba(255,255,255,0.6)">PixelDrain</div>
+  </header>
 
-  <h2>📺 مشغل الحلقات مع الترجمة</h2>
-  <video id="player" controls preload="auto">
-    <track id="subtitle" kind="subtitles" srclang="ar" label="Arabic" default>
-  </video>
+  <main>
+    <h1>المكتبة</h1>
+    <div class="grid" id="catalog"></div>
+  </main>
 
-  <div id="playlist"></div>
+  <footer>اضغط على أي بوستر لفتح المشغل</footer>
 
-<script>
-  const player = document.getElementById("player");
-  const subtitleTrack = document.getElementById("subtitle");
+  <script>
+    const JSON_URL = '/playlist.json';
+    const catalog = document.getElementById('catalog');
 
-  async function loadVideo(videoUrl, subUrl) {
-    player.src = videoUrl;
+    function safeText(s){ return String(s||''); }
 
-    // تحميل الترجمة
-    const res = await fetch(subUrl);
-    let txt = await res.text();
-    if (!txt.startsWith("WEBVTT")) txt = "WEBVTT\n\n" + txt;
+    async function loadCatalog(){
+      try{
+        const res = await fetch(JSON_URL);
+        if(!res.ok) throw new Error('فشل تحميل playlist.json');
+        const data = await res.json();
 
-    const blob = new Blob([txt], { type: "text/vtt" });
-    const trackUrl = URL.createObjectURL(blob);
-    subtitleTrack.src = trackUrl;
+        // data expected shape (new):
+        // { "Title": { "poster": "Title/poster.jpg", "videos": [{"video":"...","subtitle":"..."}, ...] }, ... }
+        // also support old shape where value is an array of video objects
 
-    player.load();
-    player.play();
-  }
-
-  async function loadPlaylist() {
-    const res = await fetch("https://gist.githubusercontent.com/ACona1/c670df837e4ed498d15295d4b650dfd0/raw/playlist.txt");
-    const categories = await res.json();
-
-    const playlistDiv = document.getElementById("playlist");
-    playlistDiv.innerHTML = "";
-
-    for (const [catName, episodes] of Object.entries(categories)) {
-      const catDiv = document.createElement("div");
-      catDiv.className = "category";
-      catDiv.innerHTML = `<h3>${catName}</h3>`;
-
-      episodes.forEach((ep, i) => {
-        const epDiv = document.createElement("div");
-        epDiv.className = "episode";
-        epDiv.textContent = `حلقة ${i+1}`;
-        epDiv.onclick = () => loadVideo(ep.video, ep.sub);
-        catDiv.appendChild(epDiv);
-      });
-
-      playlistDiv.appendChild(catDiv);
+        renderCatalog(data);
+      }catch(err){
+        catalog.innerHTML = `<div style="padding:30px;color:#f88">حصل خطأ في تحميل الـ JSON: ${err.message}</div>`;
+        console.error(err);
+      }
     }
-  }
 
-  loadPlaylist();
-</script>
+    function renderCatalog(data){
+      catalog.innerHTML = '';
+      Object.keys(data).forEach((title, idx)=>{
+        const raw = data[title];
+        let poster = '';
+        let videos = [];
 
+        if(Array.isArray(raw)){
+          // old format: array of {video:..., sub:...}
+          videos = raw;
+          poster = (raw[0] && raw[0].poster) ? raw[0].poster : '';
+        } else if(raw && typeof raw === 'object'){
+          videos = raw.videos || [];
+          poster = raw.poster || '';
+        }
+
+        // fallback poster
+        const fallback = 'poster_default.jpg';
+        const card = document.createElement('div'); card.className='card';
+        const thumb = document.createElement('div'); thumb.className='thumb';
+
+        const img = document.createElement('img'); img.alt = title;
+        img.src = poster || fallback;
+        thumb.appendChild(img);
+        const grad = document.createElement('div'); grad.className='overlay-gradient'; thumb.appendChild(grad);
+
+        const ttl = document.createElement('div'); ttl.className='title'; ttl.textContent = title;
+        const meta = document.createElement('div'); meta.className='meta'; meta.textContent = (videos.length>1)? `${videos.length} حلقات` : 'فيلم';
+
+        card.appendChild(thumb); card.appendChild(ttl); card.appendChild(meta);
+
+        card.addEventListener('click', ()=>{
+          const url = new URL(window.location.origin + '/player.html');
+          url.searchParams.set('title', title);
+          url.searchParams.set('idx', '0');
+          window.location.href = url.toString();
+        });
+
+        catalog.appendChild(card);
+      });
+    }
+
+    loadCatalog();
+  </script>
 </body>
 </html>
