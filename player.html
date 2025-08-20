@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+<<<<<<< HEAD
   <title>Fsh5Flix — المشغل (مودرن)</title>
   <style>
     :root{
@@ -196,6 +197,240 @@
 
     let currentItems = [];
     loadFolder();
+=======
+  <title>Fsh5Flix — المشغل (مُحدَّث)</title>
+  <link href="https://vjs.zencdn.net/8.20.0/video-js.css" rel="stylesheet" />
+  <style>
+    :root{--bg:#000;--accent:#e50914;--muted:rgba(255,255,255,0.6)}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#000,#041021);font-family:Inter,system-ui,Arial}
+    .wrap{max-width:1200px;margin:18px auto;padding:18px}
+    .top{display:flex;gap:20px;align-items:flex-start}
+    .poster{width:380px;min-width:180px;border-radius:12px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,0.7)}
+    .poster img{width:100%;height:100%;object-fit:cover;display:block}
+    .info{flex:1}
+    .controls-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+    .btn{background:var(--accent);color:#fff;padding:10px 14px;border-radius:10px;border:0;cursor:pointer;font-weight:800}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:#fff}
+    .player-wrap{margin-top:18px}
+    .video-js{width:100%;height:56vw;max-height:72vh;border-radius:12px;background:#000}
+    .episodes{margin-top:18px;display:flex;flex-wrap:wrap;gap:12px}
+    .ep{padding:12px 18px;border-radius:14px;background:rgba(255,255,255,0.03);cursor:pointer;font-weight:900;font-size:15px;color:#e6f2f8;border:1px solid rgba(255,255,255,0.03);transition:transform .14s ease,box-shadow .14s}
+    .ep:hover{transform:translateY(-6px);box-shadow:0 18px 50px rgba(0,0,0,0.45)}
+    .ep.active{background:linear-gradient(90deg,rgba(229,9,20,0.18),rgba(229,9,20,0.06));border-color:rgba(229,9,20,0.28);color:#fff}
+    .bottom-note{color:var(--muted);margin-top:10px;font-size:13px}
+    @media (max-width:900px){.top{flex-direction:column}.poster{width:100%}.btn{padding:8px 10px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="poster" id="posterBox"><img id="posterImg" src="" alt="poster"/></div>
+      <div class="info">
+        <div class="controls-row">
+          <button class="btn" id="togglePip">PIP</button>
+          <a id="downloadBtn" class="btn ghost" href="#" download>تحميل</a>
+          <button class="btn ghost" id="toggleSub">ترجمات</button>
+          <button class="btn ghost" id="theater">Theater</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="player-wrap">
+      <video id="vjs-player" class="video-js vjs-big-play-centered" controls preload="auto" playsinline></video>
+    </div>
+
+    <div class="episodes" id="episodes"></div>
+    <div class="bottom-note">النظام يقرأ JSON بصيغتين: القديم (مصفوفة) أو الجديد (كائن فيه poster و videos).</div>
+  </div>
+
+  <script src="https://vjs.zencdn.net/8.20.0/video.min.js"></script>
+  <script>
+    // READ URL PARAMS
+    const qs = new URLSearchParams(window.location.search);
+    const titleParam = qs.get('title');
+    const startIdx = parseInt(qs.get('idx')||'0',10);
+
+    const JSON_URL = '/playlist.json';
+    const posterImg = document.getElementById('posterImg');
+    const episodesEl = document.getElementById('episodes');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const toggleSubBtn = document.getElementById('toggleSub');
+    const pipBtn = document.getElementById('togglePip');
+    const theaterBtn = document.getElementById('theater');
+
+    const player = videojs('vjs-player', {controls:true,fluid:true,playbackRates:[0.5,1,1.25,1.5,2]});
+
+    // helper: normalize an item to have {video, subtitle}
+    function normalizeItem(it){
+      if(!it) return null;
+      if(typeof it === 'string') return {video: it};
+      return {
+        video: it.video || it.src || null,
+        subtitle: it.subtitle || it.sub || it.vtt || null,
+        poster: it.poster || null
+      };
+    }
+
+    // fetch playlist and initialize
+    async function load(){
+      try{
+        const res = await fetch(JSON_URL);
+        if(!res.ok) throw new Error('فشل تحميل JSON');
+        const data = await res.json();
+
+        const keys = Object.keys(data || {});
+        if(keys.length === 0) throw new Error('playlist.json فاضي');
+
+        let chosenTitle = titleParam || keys[0];
+        if(!data[chosenTitle]) chosenTitle = keys[0];
+
+        const raw = data[chosenTitle];
+        let poster = '';
+        let items = [];
+
+        // two supported shapes:
+        // 1) old: "Title": [ {video:..., sub:...}, ... ]
+        // 2) new: "Title": { poster: 'Title/poster.jpg', videos: [ {video:..., subtitle:...}, ... ] }
+
+        if(Array.isArray(raw)){
+          items = raw.map(normalizeItem).filter(Boolean);
+          poster = (raw[0] && raw[0].poster) ? raw[0].poster : '';
+        } else if(raw && typeof raw === 'object'){
+          if(Array.isArray(raw.videos)){
+            items = raw.videos.map(normalizeItem).filter(Boolean);
+          } else if(raw.video){
+            // edge: single object
+            items = [normalizeItem(raw)];
+          }
+          poster = raw.poster || '';
+        }
+
+        // ensure items is array
+        if(!Array.isArray(items)) items = [];
+        if(items.length === 0) throw new Error('لا توجد فيديوهات متاحة لهذا العنوان');
+
+        setupPlayer(chosenTitle, poster, items, startIdx);
+      }catch(err){
+        alert('حصل خطأ: '+err.message);
+        console.error(err);
+      }
+    }
+
+    function clearRemoteTracks(){
+      const rtt = player.remoteTextTracks();
+      for(let j=rtt.length-1;j>=0;j--){ try{ player.removeRemoteTextTrack(rtt[j]); }catch(e){} }
+    }
+
+    async function tryHead(url){
+      try{
+        const res = await fetch(url, {method:'HEAD'});
+        return res.ok;
+      }catch(e){ return false; }
+    }
+
+    // guesses for subtitle paths (still try server HEAD)
+    function subtitleGuesses(title, idx){
+      const enc = encodeURIComponent(title);
+      const ep = (idx+1).toString().padStart(2,'0');
+      return [
+        `${enc}/E${ep}.vtt`, `${enc}/e${ep}.vtt`, `${enc}/E${idx+1}.vtt`,
+        `${title}/E${ep}.vtt`, `${title}/E${idx+1}.vtt`, `${enc}/${enc}.vtt`, `${title}/${title}.vtt`
+      ];
+    }
+
+    // guesses for poster paths
+    function posterGuesses(title){
+      const enc = encodeURIComponent(title);
+      return [`${enc}/poster.jpg`, `${enc}/poster.png`, `${title}/poster.jpg`, `${title}/poster.png`, `poster.jpg`];
+    }
+
+    async function findSubtitle(title, idx, item){
+      if(item && item.subtitle){
+        // if provided and looks absolute or relative
+        try{ const ok = await tryHead(item.subtitle); if(ok) return item.subtitle; }catch(e){}
+      }
+      const guesses = subtitleGuesses(title, idx);
+      for(const g of guesses){ if(await tryHead(g)) return g; }
+      return null;
+    }
+
+    async function findPoster(title, providedPoster, items, idx){
+      if(providedPoster){ try{ if(await tryHead(providedPoster)) return providedPoster; }catch(e){} }
+      // check per-item poster
+      if(items[idx] && items[idx].poster){ try{ if(await tryHead(items[idx].poster)) return items[idx].poster; }catch(e){} }
+      const guesses = posterGuesses(title);
+      for(const g of guesses){ if(await tryHead(g)) return g; }
+      return null;
+    }
+
+    function highlightEpisode(i){
+      const nodes = episodesEl.querySelectorAll('.ep'); nodes.forEach(n=>n.classList.remove('active')); if(nodes[i]) nodes[i].classList.add('active');
+    }
+
+    function savePositionKey(title){ return 'fsh5flix_pos_'+encodeURIComponent(title); }
+
+    function playIndexFactory(title, items){
+      return async function playIndex(i){
+        const it = items[i];
+        if(!it || !it.video){ alert('رابط الفيديو غير متاح'); return; }
+        player.pause();
+        player.src({src: it.video, type: 'video/mp4'});
+        clearRemoteTracks();
+
+        const subUrl = await findSubtitle(title, i, it);
+        if(subUrl){ try{ player.addRemoteTextTrack({kind:'subtitles',src:subUrl, srclang:'ar',label:'العربية',default:true}, false); }catch(e){ console.warn(e); } }
+
+        downloadBtn.href = it.video || '#';
+        highlightEpisode(i);
+        player.ready(()=>{ player.play().catch(()=>{}); });
+
+        // resume per title
+        const key = savePositionKey(title);
+        const saved = parseInt(localStorage.getItem(key)||'0',10);
+        if(saved>0){
+          player.on('play', function handler(){ if(player.currentTime()<1 && saved>0){ player.currentTime(saved); } player.off('play', handler); });
+        }
+
+        player.off('timeupdate');
+        player.on('timeupdate', ()=>{ try{ localStorage.setItem(key, Math.floor(player.currentTime())); }catch(e){} });
+      }
+    }
+
+    async function setupPlayer(title, posterPath, items, idx){
+      // poster
+      const foundPoster = await findPoster(title, posterPath, items, idx);
+      if(foundPoster) posterImg.src = foundPoster; else posterImg.src = '';
+
+      // build episodes
+      episodesEl.innerHTML = '';
+      items.forEach((it,i)=>{
+        const b = document.createElement('div'); b.className='ep'; b.textContent = items.length>1?('E'+(i+1).toString().padStart(2,'0')):'فيلم';
+        b.addEventListener('click', ()=>{ playIndex(i); });
+        episodesEl.appendChild(b);
+      });
+
+      const playIndex = playIndexFactory(title, items);
+      playIndex(Math.max(0, Math.min(idx, items.length-1)));
+      highlightEpisode(idx);
+
+      // download button
+      downloadBtn.href = items[idx].video || '#';
+
+      // pip
+      pipBtn.addEventListener('click', async ()=>{ try{ const v = document.querySelector('#vjs-player_html5_api'); if(v) await v.requestPictureInPicture(); }catch(e){ alert('PIP غير مدعوم'); } });
+
+      // subtitles toggle
+      toggleSubBtn.addEventListener('click', ()=>{ const tracks = player.textTracks(); if(tracks && tracks.length>0){ for(let i=0;i<tracks.length;i++){ tracks[i].mode = (tracks[i].mode==='showing')? 'disabled' : 'showing'; } } else alert('لا توجد ترجمات مضافة'); });
+
+      theaterBtn.addEventListener('click', ()=>{ document.body.classList.toggle('theater'); });
+    }
+
+    // start
+    load();
+
+    // stop playback on unload
+    window.addEventListener('beforeunload', ()=>{ try{ player.pause(); }catch(e){} });
+>>>>>>> 6ceaa85b1c6b1569888e61ab6d0713258b67a5d7
   </script>
 </body>
 </html>
