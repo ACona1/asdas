@@ -15,4 +15,4 @@ jobs:
         with:
           node-version: 18
       - run: npm install --global surge
-      - run: surge ./ yoursite.surge.sh --token ${{ secrets.SURGE_TOKEN }}
+      - run: surge ./ testplayer.surge.sh --token ${{ secrets.SURGE_TOKEN }}
