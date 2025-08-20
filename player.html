@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fsh5Flix — المشغل (مودرن)</title>
+  <style>
+    :root{
+      --bg-1: #030409; --bg-2:#071422; --accent:#e50914; --muted:rgba(255,255,255,0.65);
+      --card-w: 320px; --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,var(--bg-1),var(--bg-2));color:#eaf6ff}
+
+    /* layout container */
+    .container{width:94%;max-width:1200px;margin:28px auto;padding:18px}
+    .top{display:flex;gap:22px;align-items:flex-start}
+
+    /* poster card (smaller & modern) */
+    .poster-card{width:var(--card-w);min-width:220px;border-radius:var(--radius);overflow:hidden;position:relative;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);box-shadow:0 18px 60px rgba(1,8,20,0.7);border:1px solid rgba(255,255,255,0.03)}
+    .poster-inner{position:relative;padding:14px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));display:flex;flex-direction:column;gap:12px;height:100%}
+    .poster-thumb{width:100%;height:440px;border-radius:10px;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center}
+    .poster-thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s cubic-bezier(.2,.9,.3,1)}
+    .poster-meta{display:flex;flex-direction:column;gap:6px}
+    .poster-title{font-weight:800;font-size:16px}
+    .poster-actions{display:flex;flex-direction:column;gap:8px;flex-wrap:wrap}
+    .btn{background:var(--accent);color:#fff;padding:8px 12px;border-radius:10px;border:0;cursor:pointer;font-weight:800}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06)}
+
+    /* main player area */
+    .player-area{flex:1;display:flex;flex-direction:column;gap:16px}
+    .video-frame{position:relative;border-radius:16px;overflow:hidden;background:#000;box-shadow:0 30px 90px rgba(0,0,0,0.7)}
+    video{width:100%;height:auto;display:block;max-height:72vh;object-fit:contain;background:#000}
+
+    /* overlay play button (centered, but small since poster card is smaller) */
+    .poster-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:12px;background:linear-gradient(180deg,rgba(0,0,0,0.15),rgba(0,0,0,0.25));z-index:6;cursor:pointer;transition:opacity .5s}
+    .poster-overlay .play{width:88px;height:88px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;color:#fff;background:linear-gradient(135deg,rgba(229,9,20,0.95),rgba(229,9,20,0.78));box-shadow:0 18px 40px rgba(229,9,20,0.12);transform:translateY(0);transition:transform .22s}
+    .poster-overlay:hover .play{transform:translateY(-6px) scale(1.04)}
+    .poster-overlay.fade-out{opacity:0;pointer-events:none}
+
+    /* episodes buttons bigger and clear */
+    .episodes{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+    .ep{padding:10px 14px;border-radius:12px;background:transparent;border:1px solid rgba(255,255,255,0.04);cursor:pointer;font-weight:800;color:#eaf6ff;transition:all .12s}
+    .ep:hover{transform:translateY(-6px);box-shadow:0 18px 40px rgba(0,0,0,0.45)}
+    .ep.active{background:linear-gradient(90deg,rgba(229,9,20,0.14),rgba(229,9,20,0.06));border-color:rgba(229,9,20,0.28)}
+
+    /* subtle responsive */
+    @media (max-width:980px){
+      .top{flex-direction:column}
+      .poster-card{width:100%;display:flex}
+      .poster-thumb{height:320px}
+    }
+
+    /* small helper */
+    .note{color:var(--muted);font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top">
+      <div class="poster-card" id="posterCard">
+        <div class="poster-inner">
+          <div class="poster-thumb" id="posterThumb">
+            <img id="posterImg" src="" alt="poster">
+            <div class="poster-overlay" id="posterOverlay"><div class="play">▶</div></div>
+          </div>
+          <div class="poster-meta">
+            <div class="poster-title" id="titleEl"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div class="poster-actions">
+                <button class="btn" id="pipBtn">PIP</button>
+                <a id="downloadBtn" class="btn ghost" download>تحميل</a>
+              </div>
+              <div class="note">اضغط على البوستر للبدء</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="player-area">
+        <div class="video-frame" id="videoFrame">
+          <video id="video" controls playsinline crossorigin="anonymous"></video>
+        </div>
+        <div class="episodes" id="episodes"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const folderRaw = params.get('folder') || '';
+    const folderEnc = encodeURIComponent(folderRaw);
+    const startIdx = parseInt(params.get('idx')||'0',10);
+
+    const posterImg = document.getElementById('posterImg');
+    const posterOverlay = document.getElementById('posterOverlay');
+    const posterThumb = document.getElementById('posterThumb');
+    const titleEl = document.getElementById('titleEl');
+    const videoEl = document.getElementById('video');
+    const episodesEl = document.getElementById('episodes');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const pipBtn = document.getElementById('pipBtn');
+
+    const JSON_IN_FOLDER = `${folderEnc}/playlist.json`;
+    const POSTER_IN_FOLDER = `${folderEnc}/poster.jpg`;
+
+    async function tryHead(url){
+      try{ const r = await fetch(url, {method:'HEAD'}); return r.ok; }catch(e){ return false; }
+    }
+
+    async function loadFolder(){
+      try{
+        if(!folderRaw) throw new Error('اسم الفولدر مش محدد');
+        const r = await fetch(JSON_IN_FOLDER);
+        if(!r.ok) throw new Error('مش لاقي ' + JSON_IN_FOLDER);
+        const json = await r.json();
+
+        let items = [];
+        if(Array.isArray(json)) items = json;
+        else if(json && typeof json === 'object'){
+          if(json[folderRaw]) items = json[folderRaw];
+          else {
+            const keys = Object.keys(json);
+            for(const k of keys){ if(Array.isArray(json[k])){ items = json[k]; break; } }
+          }
+        }
+        if(!Array.isArray(items) || items.length === 0) throw new Error('مفيش فيديوهات فـ '+ JSON_IN_FOLDER);
+
+        // set title
+        titleEl.textContent = folderRaw || '';
+
+        // poster
+        const posterExists = await tryHead(POSTER_IN_FOLDER);
+        if(posterExists) posterImg.src = POSTER_IN_FOLDER; else posterImg.src = '';
+
+        // normalize items
+        const normalized = items.map(it => ({ video: typeof it === 'string' ? it : (it.video||it.src), subtitle: it.subtitle||it.sub||it.vtt||null }));
+
+        // build episodes UI
+        episodesEl.innerHTML = '';
+        normalized.forEach((it,i)=>{
+          const b = document.createElement('div'); b.className='ep'; b.textContent = normalized.length>1?('E'+String(i+1).padStart(2,'0')):'فيلم';
+          b.addEventListener('click', ()=> playIndex(i));
+          episodesEl.appendChild(b);
+        });
+
+        // download default
+        downloadBtn.href = normalized[startIdx].video || '#';
+
+        // poster overlay click to play
+        posterOverlay.addEventListener('click', ()=>{ posterOverlay.classList.add('fade-out'); setTimeout(()=>{ posterOverlay.style.display='none'; },500); playIndex(currentIndex); });
+
+        // subtitle finder
+        async function findSubtitle(i){
+          const it = normalized[i];
+          if(it.subtitle){ const cand = it.subtitle.includes('/')? it.subtitle : `${folderEnc}/${it.subtitle}`; if(await tryHead(cand)) return cand; }
+          const ep = String(i+1).padStart(2,'0');
+          const guesses = [ `${folderEnc}/E${ep}.vtt`, `${folderEnc}/e${ep}.vtt`, `${folderRaw}/E${ep}.vtt`, `${folderRaw}/E${i+1}.vtt` ];
+          for(const g of guesses) if(await tryHead(g)) return g;
+          return null;
+        }
+
+        // play logic
+        let currentIndex = startIdx;
+        async function playIndex(i){
+          currentIndex = i;
+          const it = normalized[i];
+          if(!it||!it.video){ alert('رابط الفيديو غير متاح'); return; }
+          videoEl.src = it.video;
+          downloadBtn.href = it.video || '#';
+
+          // remove old tracks
+          const tks = videoEl.querySelectorAll('track'); tks.forEach(t=>t.remove());
+          const sub = await findSubtitle(i);
+          if(sub){ const tr = document.createElement('track'); tr.kind='subtitles'; tr.src=sub; tr.srclang='ar'; tr.label='العربية'; tr.default=true; videoEl.appendChild(tr); }
+
+          try{ await videoEl.play(); }catch(e){}
+          document.querySelectorAll('.ep').forEach((n,idx)=> n.classList.toggle('active', idx===i));
+        }
+
+        // highlight default
+        document.querySelectorAll('.ep').forEach((n, idx)=> n.classList.toggle('active', idx===currentIndex));
+
+        // pip
+        pipBtn.addEventListener('click', async ()=>{ try{ if(document.pictureInPictureElement) await document.exitPictureInPicture(); else await videoEl.requestPictureInPicture(); }catch(e){ alert('PIP غير مدعوم'); } });
+
+        // save resume
+        const posKey = 'fsh5flix_pos_' + encodeURIComponent(folderRaw);
+        videoEl.addEventListener('timeupdate', ()=>{ try{ localStorage.setItem(posKey, Math.floor(videoEl.currentTime)); }catch(e){} });
+        const saved = parseInt(localStorage.getItem(posKey)||'0',10);
+        if(saved>0){ videoEl.addEventListener('play', function handler(){ if(videoEl.currentTime<1) videoEl.currentTime = saved; videoEl.removeEventListener('play', handler); }); }
+
+        window.playIndex = playIndex;
+      }catch(err){ console.error(err); alert('حصل خطأ: ' + (err.message||err)); }
+    }
+
+    let currentItems = [];
+    loadFolder();
+  </script>
+</body>
+</html>
